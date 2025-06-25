@@ -86,7 +86,7 @@ impl WordReport {
                     ("Наименование контрагента", parsed.account_name.as_str()),
                     ("Скоринг", ""), // Нет соответствующего поля в структуре
                     ("Отрасль", parsed.industry.as_str()),
-                    ("Сегмент", parsed.business_segment.as_str()),
+                    ("Сегмент", parsed.business_segment_label.as_str()),
                     ("Принадлежность к группе", ""), // Нет соответствующего поля в структуре
                 ];
 

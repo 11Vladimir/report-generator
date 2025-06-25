@@ -8,7 +8,6 @@ pub struct MonitoringReportData {
     pub business_segment_label: String,
     pub signal_name: String,
     pub description: Option<String>,
-    pub signal_name: String,
     pub created_by: Option<String>,
     pub date_status: String,
     pub monitoring_results_history: Option<Vec<MonitoringHistoryItem>>,
