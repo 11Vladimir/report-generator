@@ -2,37 +2,112 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 jobs:
-  build-and-release:
+  build-wheels:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # Linux
+          - os: ubuntu-latest
+            platform: linux
+            target: x86_64-unknown-linux-gnu
+
+          # macOS Intel
+          - os: macos-latest
+            platform: macos-intel
+            target: x86_64-apple-darwin
+
+          # macOS Apple Silicon
+          - os: macos-latest
+            platform: macos-arm
+            target: aarch64-apple-darwin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev
+
+      - name: Install Python dependencies
+        run: |
+          pip install maturin
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          target: ${{ matrix.target }}
+
+      - name: Build wheel for specific target
+        run: |
+          if [ "${{ matrix.target }}" = "aarch64-apple-darwin" ]; then
+            # Для Apple Silicon нужна кросс-компиляция
+            export CARGO_BUILD_TARGET=${{ matrix.target }}
+            maturin build --release --target ${{ matrix.target }}
+          else
+            maturin build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Upload wheels as artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: wheels-${{ matrix.platform }}
+          path: target/wheels/*.whl
+
+  create-release:
+    needs: build-wheels
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.12'
-        
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libclang-dev
-        pip install maturin
-        
-    - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        
-    - name: Build wheel
-      run: maturin build --release
-      
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: target/wheels/*.whl
-        generate_release_notes: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v4
+
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: wheels/
+
+      - name: Move wheels to single directory
+        run: |
+          mkdir -p all-wheels
+          find wheels/ -name "*.whl" -exec cp {} all-wheels/ \;
+          ls -la all-wheels/
+          echo "Built wheels:"
+          ls -la all-wheels/*.whl
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: all-wheels/*.whl
+          generate_release_notes: true
+          body: |
+            ## 🚀 Новый релиз report-generator
+
+            ### 📦 Включенные wheel файлы:
+            - **Linux x86_64** - для серверов и Docker
+            - **macOS Intel** - для Mac с процессорами Intel
+            - **macOS Apple Silicon** - для Mac с чипами M1/M2/M3
+
+            ### 📥 Установка:
+            ```bash
+            pip install report-generator==${{ github.ref_name }}
+            ```
+
+            ### 🔧 Для разработчиков:
+            ```bash
+            # Установка из wheel файла
+            pip install <wheel-file-name>.whl
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

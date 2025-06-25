@@ -1,7 +1,8 @@
 use crate::monitoing_report::models::MonitoringReportData;
+use chrono::{TimeZone, Utc};
 use docx_rs::*;
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyBytes, PyType};
+use pyo3::types::{PyAny, PyBytes, PyDict, PyType};
 use pyo3_asyncio::tokio::future_into_py;
 use serde_json;
 use std::io::Cursor;
@@ -29,6 +30,15 @@ impl WordReport {
 
             let buf = tokio::task::spawn_blocking(move || {
                 let mut buf = Vec::new();
+
+                // Получаем текущую дату
+                let current_date = Utc::now().format("%Y-%m-%d").to_string();
+
+                // Создаем имя файла по шаблону
+                let filename = format!(
+                    "Отчет о результатах мониторинга {} {}.docx",
+                    parsed.account_name, current_date
+                );
 
                 // Функция для создания Arial шрифта
                 let arial_fonts = || {
@@ -76,7 +86,7 @@ impl WordReport {
                     ("Наименование контрагента", parsed.account_name.as_str()),
                     ("Скоринг", ""), // Нет соответствующего поля в структуре
                     ("Отрасль", parsed.industry.as_str()),
-                    ("Сегмент", parsed.business_segment_label.as_str()),
+                    ("Сегмент", parsed.business_segment.as_str()),
                     ("Принадлежность к группе", ""), // Нет соответствующего поля в структуре
                 ];
 
@@ -108,7 +118,7 @@ impl WordReport {
                     .add_table(
                         Table::new(vec![TableRow::new(vec![
                             create_header_cell("Выявленный риск-сигнал"),
-                            create_data_cell(&parsed.status_signal_label),
+                            create_data_cell(&parsed.signal_name),
                         ])])
                         .align(TableAlignmentType::Center),
                     )
@@ -217,7 +227,7 @@ impl WordReport {
                     doc = doc.add_paragraph(Paragraph::new().add_run(Run::new().add_text(""))); // Пустая строка
                 }
 
-                // Добавляем таблицу сотрудника
+                // Добавляем таблицу сотрудника с текущей датой
                 let doc = doc.add_table({
                     let user_rows = vec![
                         // Заголовок таблицы
@@ -225,10 +235,10 @@ impl WordReport {
                             create_header_cell("Сотрудник"),
                             create_header_cell("Дата составления"),
                         ]),
-                        // Одна строка с данными из parsed
+                        // Одна строка с данными из parsed и текущей датой
                         TableRow::new(vec![
                             create_data_cell(parsed.created_by.as_deref().unwrap_or("Не указан")),
-                            create_data_cell(&parsed.date_status),
+                            create_data_cell(&current_date), // Используем текущую дату
                         ]),
                     ];
 
@@ -236,12 +246,23 @@ impl WordReport {
                 });
 
                 doc.build().pack(Cursor::new(&mut buf)).unwrap();
-                buf
+
+                // Возвращаем буфер и имя файла как кортеж
+                (buf, filename)
             })
             .await
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
-            Python::with_gil(|py| Ok(PyBytes::new(py, &buf).into()))
+            Python::with_gil(|py| {
+                let (buffer, filename) = buf;
+
+                // Создаем словарь с данными файла и именем
+                let result = PyDict::new(py);
+                result.set_item("file_data", PyBytes::new(py, &buffer))?;
+                result.set_item("filename", filename)?;
+
+                Ok(result.into())
+            })
         })
     }
 }
