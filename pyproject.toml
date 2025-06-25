@@ -1,9 +1,17 @@
 [project]
-name = "src"
-version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.12"
-dependencies = [
-    "maturin>=1.9.0",
+name = "report_generator"
+version = "1.0.0"
+description = "Word and Excel Report Generator"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3.10",
+    "Typing :: Typed"
 ]
+
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+module-name = "report_generator._report_generator"
